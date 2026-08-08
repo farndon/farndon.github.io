@@ -185,9 +185,15 @@ def main():
     geolocator = Nominatim(user_agent=GEOCODE_USER_AGENT)
 
     print(f"\nGeocoding reference address: {ref_address}")
-    ref_lat, ref_lon, was_cached = geocode_cached(geolocator, ref_address, cache)
-    if not was_cached:
-        time.sleep(REQUEST_DELAY_SECONDS)
+    try:
+        ref_lat, ref_lon, was_cached = geocode_cached(geolocator, ref_address, cache)
+        if not was_cached:
+            time.sleep(REQUEST_DELAY_SECONDS)
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user (Ctrl-C). Saving progress before exiting...")
+        save_cache(cache_path, cache)
+        print(f"Cache saved to {cache_path} ({len(cache)} entries)")
+        sys.exit(130)
     if ref_lat is None:
         save_cache(cache_path, cache)
         sys.exit("Could not geocode the reference address. Please check it and try again.")
@@ -201,25 +207,43 @@ def main():
 
     matches = []
     failed = []
-    for i, contact in enumerate(contacts, 1):
-        print(f"[{i}/{len(contacts)}] {contact['name']}: {contact['address']}")
-        lat, lon, was_cached = geocode_cached(geolocator, contact['address'], cache)
-        if not was_cached:
-            time.sleep(REQUEST_DELAY_SECONDS)
-            if i % 10 == 0:
-                save_cache(cache_path, cache)  # periodic save so progress isn't lost
+    try:
+        for i, contact in enumerate(contacts, 1):
+            print(f"[{i}/{len(contacts)}] {contact['name']}: {contact['address']}")
+            lat, lon, was_cached = geocode_cached(geolocator, contact['address'], cache)
+            if not was_cached:
+                time.sleep(REQUEST_DELAY_SECONDS)
+                if i % 10 == 0:
+                    save_cache(cache_path, cache)  # periodic save so progress isn't lost
 
-        if lat is None:
-            print(f"  ERROR: could not geocode address for '{contact['name']}': "
-                  f"{contact['address']}")
-            failed.append(contact)
-            continue
+            if lat is None:
+                print(f"  ERROR: could not geocode address for '{contact['name']}': "
+                      f"{contact['address']}")
+                failed.append(contact)
+                continue
 
-        contact_coords = (lat, lon)
-        distance_miles = geodesic(ref_coords, contact_coords).miles
+            contact_coords = (lat, lon)
+            distance_miles = geodesic(ref_coords, contact_coords).miles
 
-        if distance_miles <= radius_miles:
-            matches.append({**contact, 'distance_miles': round(distance_miles, 2)})
+            if distance_miles <= radius_miles:
+                matches.append({**contact, 'distance_miles': round(distance_miles, 2)})
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user (Ctrl-C). Saving progress before exiting...")
+        save_cache(cache_path, cache)
+        print(f"Cache saved to {cache_path} ({len(cache)} entries)")
+        if matches:
+            partial_path = csv_path.with_name(csv_path.stem + "_matches_partial.csv")
+            with open(partial_path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(
+                    f, fieldnames=['name', 'address', 'phone', 'distance_miles']
+                )
+                writer.writeheader()
+                writer.writerows(sorted(matches, key=lambda c: c['distance_miles']))
+            print(f"Partial results ({len(matches)} match(es) found so far) saved to: "
+                  f"{partial_path}")
+        else:
+            print("No matches had been found yet.")
+        sys.exit(130)
 
     save_cache(cache_path, cache)
     print(f"Cache saved to {cache_path} ({len(cache)} entries)")
@@ -264,4 +288,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user (Ctrl-C). Exiting.")
+        sys.exit(130)
