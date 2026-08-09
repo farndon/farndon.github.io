@@ -41,12 +41,14 @@ GEOCODE_USER_AGENT = "csv_proximity_finder_script"
 REQUEST_DELAY_SECONDS = 1.0  # be polite to Nominatim's free tier
 CACHE_FILENAME = "geocode_cache.json"
 
-# The geocoding service sometimes fails to resolve addresses in this
-# unincorporated community, so we substitute the enclosing county name when
+# The geocoding service sometimes fails to resolve addresses in
+# unincorporated communities, so we substitute the enclosing county name when
 # querying the geocoder. The original text is preserved everywhere else
-# (display, CSV output, cache key) so results still show "Granite Bay".
+# (display, CSV output, cache key) so results still show "Granite Bay", for example
+# add more such places in the list below
 GEOCODE_SUBSTITUTIONS = {
     "granite bay": "Placer County",
+    "antelope": "Sacramento County",
 }
 
 
@@ -65,7 +67,12 @@ def prepare_geocode_query(address):
             lower = query.lower()
     return query
 
-
+#==================================================
+# load_cache
+# If the .json cache file exists, load it and use it
+# If the file is missing we will rebuild it by
+# resubmitting all addresses to the geo server
+#==================================================
 def load_cache(cache_path):
     if cache_path.is_file():
         try:
@@ -75,7 +82,10 @@ def load_cache(cache_path):
             print(f"Warning: could not read cache file ({e}); starting with an empty cache.")
     return {}
 
-
+#=========================================
+# save_cache
+# Saves the json geo location cache file
+#=========================================
 def save_cache(cache_path, cache):
     try:
         with open(cache_path, 'w', encoding='utf-8') as f:
@@ -83,7 +93,12 @@ def save_cache(cache_path, cache):
     except OSError as e:
         print(f"Warning: could not write cache file: {e}")
 
-
+#==========================================================
+# prompt_reference_address
+# Prompt user for the refrence address to include
+# number and street, city and state
+# Elected to leave zip code off since we might not know it
+#==========================================================
 def prompt_reference_address():
     print("Enter the reference street address to compare against:")
     street = input("  Street address (number and street name): ").strip()
@@ -91,7 +106,10 @@ def prompt_reference_address():
     state = input("  State: ").strip()
     return f"{street}, {city}, {state}"
 
-
+#===================================================
+# prompt_radius
+# Prompt user for the radius in miles .1 LSB
+#===================================================
 def prompt_radius():
     while True:
         raw = input("Enter search radius in miles (e.g. 5.0, resolution 0.1): ").strip()
@@ -104,7 +122,7 @@ def prompt_radius():
         except ValueError:
             print("Please enter a valid number.")
 
-
+#===========================================================================
 def geocode_cached(geolocator, address, cache, retries=3):
     """
     Returns (latitude, longitude, was_cached) for the given address, or
@@ -138,7 +156,11 @@ def geocode_cached(geolocator, address, cache, retries=3):
             time.sleep(1.0)
     return None, None, False
 
-
+#==============================================================
+# load_contacts
+# Loads the contacts from the contacts csv file
+# This would contain everybody in the set of people to search on
+#==============================================================
 def load_contacts(csv_path):
     contacts = []
     with open(csv_path, newline='', encoding='utf-8-sig') as f:
@@ -159,7 +181,9 @@ def load_contacts(csv_path):
             })
     return contacts
 
-
+#=======================
+# main
+#=======================
 def main():
     parser = argparse.ArgumentParser(
         description="Find contacts within a given radius of a reference address."
@@ -258,9 +282,9 @@ def main():
 
     matches.sort(key=lambda c: c['distance_miles'])
 
-    print(f"\n{'=' * 60}")
+    print(f"\n{'=' * 70}")
     print(f"Contacts within {radius_miles} miles of {ref_address}:")
-    print(f"{'=' * 60}")
+    print(f"{'=' * 70}")
     if not matches:
         print("No matches found.")
     else:
@@ -286,7 +310,7 @@ def main():
             writer.writerows(failed)
         print(f"Addresses that failed to geocode saved to: {failed_path}")
 
-
+#================================
 if __name__ == "__main__":
     try:
         main()
